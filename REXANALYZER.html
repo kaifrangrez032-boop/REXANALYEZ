@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forex News Sentiment Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
+        
+        /* Tailwind Configuration for Dark Mode */
+        /* Dark mode styles are applied via the 'dark' class on the HTML element */
+
+        /* Base Styling */
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f4f7f9; 
+            color: #1f2937;
+            transition: background-color 0.3s;
+        }
+        .dark body {
+            background-color: #111827; /* Dark Gray */
+            color: #e5e7eb;
+        }
+        .card { 
+            background-color: white; 
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); 
+            border-radius: 12px; 
+            transition: background-color 0.3s, box-shadow 0.3s;
+        }
+        .dark .card {
+            background-color: #1f2937; /* Even darker card */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Loading Spinner */
+        .loader { 
+            border: 4px solid #f3f3f3; 
+            border-top: 4px solid #3b82f6; 
+            border-radius: 50%; 
+            width: 24px; 
+            height: 24px; 
+            animation: spin 1s linear infinite; 
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Custom Styles for Sentiment and Action */
+        .sentiment-positive { color: #059669; font-weight: 700; background-color: #ecfdf5; padding: 2px 4px; border-radius: 4px; } /* Emerald 600 */
+        .sentiment-negative { color: #dc2626; font-weight: 700; background-color: #fef2f2; padding: 2px 4px; border-radius: 4px; } /* Red 600 */
+        .action-buy { background-color: #10b981; color: white; }
+        .action-sell { background-color: #ef4444; color: white; }
+        .action-hold { background-color: #3b82f6; color: white; }
+
+        /* Style for Key News Point Highlight */
+        .key-highlight {
+            font-weight: 700;
+            color: #3b82f6; /* Primary Blue */
+            padding: 1px 4px;
+            margin: 0 2px;
+            background-color: #eff6ff; /* Blue 50 */
+            border-radius: 4px;
+            white-space: normal; /* Allow phrases to wrap */
+            transition: all 0.2s;
+        }
+        .dark .key-highlight {
+            color: #93c5fd; /* Blue 300 */
+            background-color: #1e3a8a; /* Blue 800 */
+        }
+
+        /* Price Status Colors */
+        .price-up { color: #10b981; }
+        .price-down { color: #ef4444; }
+        .price-flat { color: #3b82f6; }
+        
+        /* Utility for mobile responsiveness */
+        @media (max-width: 640px) {
+            .input-grid { grid-template-columns: 1fr; }
+        }
+
+        /* --- Custom Sentiment Dot Styles --- */
+        .sentiment-list {
+            list-style: none; /* Remove default list style */
+            padding-left: 0; /* Remove default padding */
+        }
+
+        .sentiment-list li {
+            position: relative;
+            padding-left: 1.5rem; /* Space for the custom dot */
+        }
+
+        .sentiment-list li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0.65rem; /* Align vertically with text */
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 50%;
+            background-color: #9ca3af; /* Default gray for neutral/unclassified */
+            transition: background-color 0.2s;
+        }
+        
+        /* Green Dot for Positive */
+        .sentiment-list li.is-positive::before {
+            background-color: #10b981; /* Tailwind success-500 */
+        }
+
+        /* Red Dot for Negative */
+        .sentiment-list li.is-negative::before {
+            background-color: #ef4444; /* Tailwind danger-500 */
+        }
+        /* --- End Custom Sentiment Dot Styles --- */
+    </style>
+    <script>
+        tailwind.config = {
+            darkMode: 'class', // Enable class-based dark mode
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': '#3b82f6',
+                        'success': '#10b981',
+                        'danger': '#ef4444',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="p-4 sm:p-8 min-h-screen">
+
+    <div class="max-w-4xl mx-auto space-y-8">
+        
+        <header class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-extrabold text-gray-800 dark:text-gray-100 transition-colors">Forex Sentiment Dashboard</h1>
+            
+            <!-- Dark Mode Toggle Button -->
+            <button id="darkModeToggle" onclick="toggleDarkMode()" 
+                    class="p-2 rounded-full text-gray-700 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition duration-300 shadow-md"
+                    aria-label="Toggle Dark Mode">
+                <!-- Icon will be set by JavaScript based on current mode -->
+                <span id="modeIcon" class="text-xl">🌙</span> 
+            </button>
+        </header>
+
+        <!-- Current Price Display -->
+        <div class="card p-4 flex justify-between items-center bg-gray-50 dark:bg-gray-700 transition-colors">
+            <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200" id="pricePairTitle">EUR/USD Live</h3>
+            <div class="text-right">
+                <p id="currentPrice" class="text-3xl font-extrabold price-flat transition-colors">1.0950</p>
+                <p id="priceChange" class="text-sm font-medium price-flat transition-colors">+0.00%</p>
+            </div>
+        </div>
+
+        <!-- Input Card -->
+        <div class="card p-6 border-t-4 border-primary">
+            <!-- Grid reduced to 2 columns -->
+            <div class="grid input-grid sm:grid-cols-2 gap-4 mb-4">
+                
+                <!-- 1. Currency Pair Selector -->
+                <div>
+                    <label for="currencyPair" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Select Currency Pair</label>
+                    <select id="currencyPair" onchange="updatePriceDisplay()" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm dark:bg-gray-700 dark:text-gray-100">
+                        <option value="EURUSD" selected data-base-price="1.0950">EUR/USD</option>
+                        <option value="USDJPY" data-base-price="149.25">USD/JPY</option>
+                        <option value="GBPUSD" data-base-price="1.2580">GBP/USD</option>
+                        <option value="AUDUSD" data-base-price="0.6540">AUD/USD</option>
+                        <option value="USDCAD" data-base-price="1.3610">USD/CAD</option>
+                        <option value="USDCHF" data-base-price="0.9085">USD/CHF</option>
+                        <option value="XAUUSD" data-base-price="1980.50">XAU/USD (Gold)</option>
+                    </select>
+                </div>
+
+                <!-- 2. Timeframe Selector -->
+                <div>
+                    <label for="timeframeSelect" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Analysis Horizon</label>
+                    <select id="timeframeSelect" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm dark:bg-gray-700 dark:text-gray-100">
+                        <option value="1 hour">1 Hour (Intraday Scalping)</option>
+                        <option value="4 hour" selected>4 Hour (Intraday Trend)</option>
+                        <option value="24 hours">24 Hour (Daily Outlook)</option>
+                        <option value="3 days">3 Days (Short-term Swing)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Button and Status -->
+            <div class="flex flex-col sm:flex-row items-center sm:items-end gap-4 justify-between pt-2">
+                <button 
+                    id="analyzeButton" 
+                    onclick="analyzeSentiment()" 
+                    class="flex items-center justify-center sm:w-auto w-full px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:bg-blue-600 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                >
+                    <span id="buttonText">Analyze Market</span>
+                </button>
+                <p id="statusMessage" class="text-sm text-center sm:text-right text-gray-600 dark:text-gray-400 transition-colors">Ready for analysis.</p>
+            </div>
+        </div>
+
+        <!-- Results Display Card (Hidden by default) -->
+        <div id="results" class="hidden card p-6 space-y-6">
+            <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100 border-b dark:border-gray-700 pb-3" id="resultsTitle"></h2>
+
+            <!-- Last Updated Timestamp -->
+            <div class="text-sm font-medium text-right text-gray-500 dark:text-gray-400">
+                Last Analysis: <span id="lastUpdatedTimestamp" class="font-semibold text-gray-700 dark:text-gray-200">--</span>
+            </div>
+
+            <!-- Summary Panel (Sentiment & Action) -->
+            <div class="grid responsive-grid sm:grid-cols-3 gap-4">
+                
+                <!-- Sentiment Panel -->
+                <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg text-center border-l-4 border-primary transition-colors">
+                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase">Overall Sentiment</p>
+                    <p id="sentimentText" class="text-3xl font-black mt-2 text-primary">Neutral</p>
+                </div>
+
+                <!-- Action Panel (Removed risk level display) -->
+                <div class="col-span-1 sm:col-span-2 p-4 rounded-lg text-center" id="actionPanel">
+                    <p class="text-sm font-medium text-white uppercase">Recommended Action</p>
+                    <p id="actionText" class="text-4xl font-extrabold mt-2 tracking-wide">HOLD</p>
+                </div>
+            </div>
+            
+            <!-- Key Levels Card -->
+            <div class="card p-4 border dark:border-gray-700">
+                <h3 class="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Key Technical Levels</h3>
+                <div class="grid grid-cols-2 gap-4 text-center">
+                    <!-- Resistance -->
+                    <div class="p-3 bg-red-50 dark:bg-red-900/30 rounded-lg shadow-inner">
+                        <p class="text-sm font-medium text-red-600 dark:text-red-300 uppercase">Resistance</p>
+                        <div id="resistanceLevels" class="mt-1 text-xl sm:text-2xl font-bold text-red-700 dark:text-red-200">--</div>
+                    </div>
+                    <!-- Support -->
+                    <div class="p-3 bg-green-50 dark:bg-green-900/30 rounded-lg shadow-inner">
+                        <p class="text-sm font-medium text-green-600 dark:text-green-300 uppercase">Support</p>
+                        <div id="supportLevels" class="mt-1 text-xl sm:text-2xl font-bold text-green-700 dark:text-green-200">--</div>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- Detailed Summary and Rationale (SPLIT INTO 2 COLUMNS) -->
+            <div>
+                <h3 class="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-3">Key Rationale & Market Drivers</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    <!-- Fundamental Card -->
+                    <div class="card p-4 border-l-4 border-blue-500 dark:bg-gray-800 transition-colors">
+                        <h4 class="text-lg font-bold text-blue-500 mb-2">Fundamental Drivers</h4>
+                        <div id="fundamentalSummary" class="text-gray-700 dark:text-gray-300 leading-relaxed min-h-[8rem]">
+                            <p class="text-gray-500 dark:text-gray-400 italic text-sm">Awaiting analysis...</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Technical Card -->
+                    <div class="card p-4 border-l-4 border-yellow-500 dark:bg-gray-800 transition-colors">
+                        <h4 class="text-lg font-bold text-yellow-500 mb-2">Technical Factors</h4>
+                        <div id="technicalSummary" class="text-gray-700 dark:text-gray-300 leading-relaxed min-h-[8rem]">
+                            <p class="text-gray-500 dark:text-gray-400 italic text-sm">Awaiting analysis...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- Grounding Sources -->
+            <div>
+                <h3 class="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-3">Supporting News Sources</h3>
+                <ul id="sourcesList" class="space-y-2 text-sm text-gray-600 dark:text-gray-400 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border dark:border-gray-600 transition-colors">
+                    <!-- Sources will be injected here -->
+                </ul>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">Data grounded by Google Search (May contain affiliate links or restricted content).</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // 🚨 CRITICAL: The API Key has been inserted here by the user for external deployment.
+        const apiKey = "AIzaSyBlu5uM0l_VW-iMi3WIiXcim74-lMOt59k"; 
+        
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+        // UI Element References
+        const html = document.documentElement;
+        const modeIcon = document.getElementById('modeIcon');
+        const analyzeButton = document.getElementById('analyzeButton');
+        const currencyPairSelect = document.getElementById('currencyPair');
+        const timeframeSelect = document.getElementById('timeframeSelect');
+        const statusMessage = document.getElementById('statusMessage');
+        const resultsDiv = document.getElementById('results');
+        const resultsTitle = document.getElementById('resultsTitle');
+        const sentimentText = document.getElementById('sentimentText');
+        const actionPanel = document.getElementById('actionPanel');
+        const actionText = document.getElementById('actionText');
+        
+        // REFERENCES for Rationale split
+        const fundamentalSummaryDiv = document.getElementById('fundamentalSummary');
+        const technicalSummaryDiv = document.getElementById('technicalSummary');
+
+        const sourcesList = document.getElementById('sourcesList');
+        const currentPriceElement = document.getElementById('currentPrice');
+        const priceChangeElement = document.getElementById('priceChange');
+        const pricePairTitle = document.getElementById('pricePairTitle');
+        const resistanceLevelsDiv = document.getElementById('resistanceLevels');
+        const supportLevelsDiv = document.getElementById('supportLevels');
+        const lastUpdatedTimestamp = document.getElementById('lastUpdatedTimestamp');
+
+        // --- Mock Price Data and Update Logic ---
+
+        let priceUpdateInterval;
+        let currentBasePrice = 1.0950; // Initial value for EURUSD
+
+        /**
+         * Simulates minor price movement and updates the live price display.
+         */
+        function mockPriceUpdate() {
+            // Get current currency pair info
+            const selectedOption = currencyPairSelect.options[currencyPairSelect.selectedIndex];
+            const pairName = selectedOption.value;
+            // Determine decimal places for formatting
+            const decimalPlaces = (pairName === 'USDJPY') ? 3 : (pairName === 'XAUUSD' ? 2 : 4);
+
+            // Simulate small random fluctuation (pips)
+            const fluctuation = (Math.random() - 0.5) * 0.0005 * (pairName === 'USDJPY' ? 100 : 1);
+            
+            // Apply fluctuation
+            let newPrice = currentBasePrice + fluctuation;
+
+            // Cap the change to prevent unrealistic spikes and set the 24h change
+            const basePriceAttribute = parseFloat(selectedOption.getAttribute('data-base-price'));
+            const dailyChange = (newPrice - basePriceAttribute) / basePriceAttribute * 100;
+            
+            // Formatting
+            const formattedPrice = newPrice.toFixed(decimalPlaces);
+            const formattedChange = (dailyChange >= 0 ? '+' : '') + dailyChange.toFixed(2) + '%';
+            
+            // Apply colors and update elements
+            let colorClass = 'price-flat';
+            if (dailyChange > 0.01) { colorClass = 'price-up'; } 
+            else if (dailyChange < -0.01) { colorClass = 'price-down'; }
+
+            currentPriceElement.className = `text-3xl font-extrabold transition-colors ${colorClass}`;
+            priceChangeElement.className = `text-sm font-medium transition-colors ${colorClass}`;
+
+            currentPriceElement.textContent = formattedPrice;
+            priceChangeElement.textContent = formattedChange;
+            pricePairTitle.textContent = `${pairName} Live`;
+            
+            // Update the current base price for the next iteration (minor drift)
+            currentBasePrice = newPrice;
+        }
+
+        /**
+         * Updates the base price when the currency pair changes and resets the interval.
+         */
+        function updatePriceDisplay() {
+            // Stop existing updates
+            clearInterval(priceUpdateInterval);
+
+            // Get the new base price from the selected option's data attribute
+            const selectedOption = currencyPairSelect.options[currencyPairSelect.selectedIndex];
+            currentBasePrice = parseFloat(selectedOption.getAttribute('data-base-price'));
+
+            // Reset initial display and start new interval
+            mockPriceUpdate(); 
+            priceUpdateInterval = setInterval(mockPriceUpdate, 2000); // Update every 2 seconds
+        }
+
+        // Initialize price display on load
+        window.onload = function() {
+            updatePriceDisplay();
+        };
+
+        // --- Dark Mode Toggle Logic ---
+
+        /**
+         * Dark Mode Toggle Logic
+         */
+        function updateModeIcon(isDark) {
+            modeIcon.textContent = isDark ? '☀️' : '🌙';
+        }
+
+        function toggleDarkMode() {
+            const isDark = html.classList.contains('dark');
+            if (isDark) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+            updateModeIcon(!isDark);
+        }
+
+        // Apply theme on initial load
+        (function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                html.classList.add('dark');
+                updateModeIcon(true);
+            } else {
+                html.classList.remove('dark');
+                updateModeIcon(false);
+            }
+        })();
+
+        // --- Core Sentiment Analysis Logic ---
+
+        /**
+         * Safely extracts the hostname from a URI.
+         */
+        function getHostname(uri) {
+            try {
+                // We remove www. for cleaner display
+                const url = new URL(uri);
+                return url.hostname.replace('www.', '');
+            } catch (e) {
+                console.warn("Could not parse URI:", uri, e);
+                return 'External Source'; 
+            }
+        }
+        
+        /**
+         * Parses the structured output from the LLM into an object using Regex for robustness.
+         * This handles minor formatting deviations by the model.
+         */
+        function parseStructuredResponse(rawText) {
+            const parts = { 
+                ACTION: 'HOLD', // Default to HOLD
+                RATIONALE_FUNDAMENTAL: "The analysis structure was not returned correctly. Please try again.", 
+                RATIONALE_TECHNICAL: "The analysis structure was not returned correctly. Please try again.", 
+                KEY_LEVELS: "" 
+            };
+            
+            // Regex to capture content between the mandated headers (case-insensitive, non-greedy, s flag allows . to match newlines)
+            const regex = /ACTION:\s*([^\n]+)\s*RATIONALE_FUNDAMENTAL:\s*([\s\S]*?)\s*RATIONALE_TECHNICAL:\s*([\s\S]*?)\s*KEY_LEVELS:\s*([\s\S]*)/i;
+            const match = rawText.match(regex);
+
+            if (match) {
+                // Group 1: ACTION (text before the first newline)
+                parts.ACTION = match[1].trim().toUpperCase();
+                // Group 2: RATIONALE_FUNDAMENTAL
+                parts.RATIONALE_FUNDAMENTAL = match[2].trim();
+                // Group 3: RATIONALE_TECHNICAL
+                parts.RATIONALE_TECHNICAL = match[3].trim();
+                // Group 4: KEY_LEVELS (the rest of the content)
+                parts.KEY_LEVELS = match[4].trim();
+            } else {
+                 console.error("Critical Parsing Failure: LLM did not follow the mandated structure pattern. Raw output:", rawText);
+            }
+
+            // Final check on action validity
+            if (!['BUY', 'SELL', 'HOLD'].includes(parts.ACTION)) {
+                parts.ACTION = 'HOLD';
+            }
+            return parts;
+        }
+
+        /**
+         * Converts the RATIONALE text (either fundamental or technical) into styled HTML list.
+         * Detects sentiment keywords to apply visual indicators (green/red dots).
+         */
+        function formatRationaleForHTML(text) {
+            // Handle placeholders if the text is missing
+            if (!text || text.trim().length < 5 || text.includes("structure was not returned correctly")) {
+                 return `<p class="text-gray-500 dark:text-gray-400 italic text-sm">No detailed rationale provided for this section, or a parsing error occurred.</p>`;
+            }
+            
+            let html = text.trim();
+
+            // 1. Split the text into lines, trim, and filter out empty lines.
+            const lines = html.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+            
+            let listContent = lines.map(line => {
+                // Remove potential markdown list markers (*, -, 1., 2.)
+                let content = line.replace(/^(\*|\-|\d+\.)\s*/, '').trim();
+
+                // 2. Determine sentiment class based on strong directional keywords
+                let sentimentClass = '';
+                // Check for positive/bullish indicators
+                if (/(bullish|positive|gain|stronger|rises|accelerated|up|support|above|recovery|strong)/i.test(content)) {
+                    sentimentClass = 'is-positive';
+                // Check for negative/bearish indicators
+                } else if (/(bearish|negative|loss|weaker|falls|slowed|down|resistance|below|decline|weak)/i.test(content)) {
+                    sentimentClass = 'is-negative';
+                }
+                
+                // 3. Apply specific styling for **KEY HIGHLIGHTS** (Markdown bold) first
+                content = content.replace(/\*\*(.*?)\*\*/g, '<span class="key-highlight">$1</span>'); 
+                
+                // 4. Add specific styling for sentiment keywords (for text color/background)
+                content = content.replace(/(\bPositive\b)/g, '<span class="sentiment-positive">$1</span>');
+                content = content.replace(/(\bNegative\b)/g, '<span class="sentiment-negative">$1</span>');
+                content = content.replace(/(\bBullish\b)/g, '<span class="sentiment-positive">Bullish</span>');
+                content = content.replace(/(\bBearish\b)/g, '<span class="sentiment-negative">Bearish</span>');
+
+                return `<li class="${sentimentClass}">${content}</li>`;
+            }).join('');
+            
+            // Wrap the list items in the custom sentiment list
+            html = `<ul class="sentiment-list space-y-3 pl-4">${listContent}</ul>`;
+
+            return html;
+        }
+
+        /**
+         * Parses the KEY_LEVELS text and updates the display.
+         */
+        function displayKeyLevels(keyLevelsText) {
+            // This is now simpler since the text is likely cleaner after regex extraction
+            const resistanceMatch = keyLevelsText.match(/Resistance:\s*([^\n]+)/i);
+            const supportMatch = keyLevelsText.match(/Support:\s*([^\n]+)/i);
+
+            resistanceLevelsDiv.textContent = resistanceMatch ? resistanceMatch[1].trim() : "N/A";
+            supportLevelsDiv.textContent = supportMatch ? supportMatch[1].trim() : "N/A";
+        }
+
+
+        /**
+         * Utility function to set the loading state and status message.
+         */
+        function setUIState(isLoading, message) {
+            analyzeButton.disabled = isLoading;
+            currencyPairSelect.disabled = isLoading;
+            timeframeSelect.disabled = isLoading; 
+            
+            statusMessage.innerHTML = isLoading 
+                ? `<span class="loader"></span> ${message}` 
+                : message;
+            
+            analyzeButton.innerHTML = isLoading 
+                ? `<span class="loader"></span> Analyzing...`
+                : `<span id="buttonText">Analyze Market</span>`;
+
+            if (isLoading) {
+                // Clear volatile data when running analysis
+                resistanceLevelsDiv.textContent = "--";
+                supportLevelsDiv.textContent = "--";
+                fundamentalSummaryDiv.innerHTML = '<p class="text-gray-500 dark:text-gray-400 italic text-sm">Running fundamental analysis...</p>';
+                technicalSummaryDiv.innerHTML = '<p class="text-gray-500 dark:text-gray-400 italic text-sm">Running technical analysis...</p>';
+            }
+        }
+
+        /**
+         * Handles the API call and result processing.
+         */
+        async function analyzeSentiment() {
+            if (apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey.length < 5) {
+                 setUIState(false, "ERROR: Please enter your Gemini API Key in the code before running!");
+                 return;
+            }
+
+            const pairName = currencyPairSelect.value;
+            const timeframe = timeframeSelect.value; 
+            const currentPrice = currentPriceElement.textContent;
+
+            // --- SYSTEM PROMPT ---
+            const systemPrompt = `You are a professional Forex market analyst focused on retail traders. Your task is to analyze the latest news for the specified currency pair and determine the short-term sentiment and recommend an action. Crucially, you must also identify and state the nearest two significant **Technical Key Levels** (Resistance and Support) relevant to the current market price (${currentPrice}) and the ${timeframe} horizon.
+
+            **Clarity Mandate:** The language used in the rationale MUST be simple, non-jargon, and easy for a casual investor to understand. Explain the *impact* directly (e.g., "This makes the USD weaker" instead of "Dovish policy").
+
+            **Source Mandate:** Base your analysis strictly on news and economic calendar events from reputable Forex sources, **prioritizing FXStreet and ForexFactory.**
+
+            **Time Horizon:** The analysis must strictly adhere to the ${timeframe} horizon.
+
+            **MANDATORY OUTPUT STRUCTURE (4 sections, each must be present and fully populated). ENSURE EACH SECTION STARTS ON A NEW LINE AND THE HEADER IS FLUSH LEFT:**
+            1. ACTION: [BUY, SELL, or HOLD]
+            2. RATIONALE_FUNDAMENTAL: A detailed, bulleted list (*) of **3-5** key fundamental drivers (e.g., economic data, central bank actions, geopolitical events). In each bullet, you MUST bold (using double asterisks: **phrase**) the single most critical phrase or data point.
+            3. RATIONALE_TECHNICAL: A detailed, bulleted list (*) of **3-5** key technical factors (e.g., trend lines, moving averages, chart patterns, key support/resistance tested). In each bullet, you MUST bold the single most critical phrase.
+            4. KEY_LEVELS: A list of the two nearest major resistance and support levels, separated by a comma, following the format: Resistance: X, Y and Support: A, B.
+
+            Example Output:
+            ACTION: BUY
+            RATIONALE_FUNDAMENTAL:
+            * The latest inflation data came in **weaker than expected**, increasing speculation that the Fed will pause rate hikes.
+            * Investor sentiment in the Eurozone showed **unexpected strength**, providing a floor for the Euro.
+            * Manufacturing PMI exceeded forecasts, suggesting **underlying economic resilience**.
+            RATIONALE_TECHNICAL:
+            * Price has bounced aggressively off the **200-period Exponential Moving Average (EMA)** on the 4-hour chart.
+            * Consolidation is occurring just above the **monthly pivot point**, indicating support is holding strong.
+            * The Relative Strength Index (RSI) is **reversing from the oversold territory**, suggesting momentum is shifting bullish.
+            KEY_LEVELS:
+            Resistance: 1.1000, 1.1035
+            Support: 1.0950, 1.0920
+            `;
+            // --- END OF SYSTEM PROMPT ---
+
+            const userQuery = `What is the market sentiment and trade recommendation for the currency pair: ${pairName} (Current Price: ${currentPrice}), focusing specifically on the **${timeframe}** horizon? Base your analysis on the latest, current events.`;
+            
+            setUIState(true, `Gathering real-time data and analyzing sentiment for ${pairName} on a ${timeframe} horizon...`);
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+                generationConfig: {
+                    temperature: 0.1,
+                }
+            };
+
+            // Use exponential backoff for robust API calls
+            const maxRetries = 5;
+            let delay = 1000;
+            
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        return handleResponse(response, pairName, timeframe);
+                    }
+
+                    if (response.status === 429 || response.status >= 500) {
+                        // Retryable errors
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2; 
+                    } else {
+                        // Non-retryable errors (e.g., 400s)
+                        const errorBody = await response.json();
+                        throw new Error(`API returned status ${response.status}: ${errorBody.error?.message || response.statusText}`);
+                    }
+                } catch (e) {
+                    if (i === maxRetries - 1) {
+                        console.error("[Forex Analysis Critical Error]:", e);
+                        setUIState(false, `Error: API call failed after multiple retries. ${e.message}`);
+                        return;
+                    }
+                    // Continue to next iteration for retry logic
+                }
+            }
+        }
+
+        async function handleResponse(response, pairName, timeframe) {
+            let rawText = null;
+            try {
+                const result = await response.json();
+                const candidate = result.candidates?.[0];
+
+                if (!candidate || !candidate.content?.parts?.[0]?.text) {
+                     throw new Error("Invalid or empty response from the analysis model.");
+                }
+
+                rawText = candidate.content.parts[0].text;
+                
+                // 1. Parse the structured output using the robust regex parser
+                const parts = parseStructuredResponse(rawText);
+                const action = parts.ACTION || "HOLD";
+                const fundamentalText = parts.RATIONALE_FUNDAMENTAL; // Use content directly
+                const technicalText = parts.RATIONALE_TECHNICAL;     // Use content directly
+                const keyLevelsText = parts.KEY_LEVELS || "";
+
+                // The old check is now replaced by the robust parser logic, 
+                // but we keep the console error logging for debugging when rationale is too short after parsing.
+                if (action === 'HOLD' && fundamentalText.length < 50 && technicalText.length < 50) {
+                     console.error("[Parsing Error]: Model output did not contain sufficient details in the mandatory sections. This may mean the model failed to follow the output structure.");
+                     console.log("Raw LLM Output (for debugging):", rawText);
+                }
+
+                // 2. Process and display the rationale in separate columns
+                fundamentalSummaryDiv.innerHTML = formatRationaleForHTML(fundamentalText);
+                technicalSummaryDiv.innerHTML = formatRationaleForHTML(technicalText);
+                
+                // 3. Process and display key levels
+                displayKeyLevels(keyLevelsText);
+
+                // 4. Update Action Panel and Sentiment
+                
+                actionText.textContent = action;
+                actionPanel.className = `col-span-1 sm:col-span-2 p-4 rounded-lg text-center transition-all duration-300 `; 
+                if (action === "BUY") {
+                    actionPanel.classList.add('action-buy');
+                } else if (action === "SELL") {
+                    actionPanel.classList.add('action-sell');
+                } else {
+                    actionPanel.classList.add('action-hold');
+                }
+
+                let sentiment = "Neutral";
+                let sentimentColor = "text-primary";
+                if (action === "BUY") {
+                    sentiment = "Bullish / Positive";
+                    sentimentColor = "text-success";
+                } else if (action === "SELL") {
+                    sentiment = "Bearish / Negative";
+                    sentimentColor = "text-danger";
+                }
+
+                sentimentText.textContent = sentiment;
+                sentimentText.className = `text-3xl font-black mt-2 transition-colors duration-300 ${sentimentColor}`;
+
+                // Set the result title 
+                resultsTitle.textContent = `Analysis for ${pairName} (${timeframe} Horizon)`;
+
+                // 5. Update the last updated timestamp
+                const now = new Date();
+                const timeString = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+                const dateString = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                lastUpdatedTimestamp.textContent = `${dateString} at ${timeString}`;
+                
+                // 6. Extract and display grounding sources (Title and URI)
+                sourcesList.innerHTML = '';
+                let sources = [];
+                const groundingMetadata = candidate.groundingMetadata;
+
+                if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                    sources = groundingMetadata.groundingAttributions
+                        .map(attribution => ({
+                            uri: attribution.web?.uri,
+                            title: attribution.web?.title,
+                        }))
+                        .filter(source => source.uri && source.title); 
+                }
+                
+                if (sources.length > 0) {
+                    sources.forEach(source => {
+                        const li = document.createElement('li');
+                        li.className = "hover:text-primary dark:text-gray-400 dark:hover:text-primary transition-colors duration-150";
+                        li.innerHTML = `
+                            <a href="${source.uri}" target="_blank" rel="noopener noreferrer" class="underline hover:no-underline">
+                                <span class="font-semibold">${source.title}</span> 
+                                <span class="text-xs text-gray-400 dark:text-gray-500">(${getHostname(source.uri)})</span>
+                            </a>
+                        `;
+                        sourcesList.appendChild(li);
+                    });
+                } else {
+                     const li = document.createElement('li');
+                     li.textContent = 'No specific web sources were cited for this response.';
+                     li.className = "dark:text-gray-400";
+                     sourcesList.appendChild(li);
+                }
+
+                document.getElementById('results').classList.remove('hidden');
+                setUIState(false, `Analysis for ${pairName} (${timeframe}) complete.`);
+
+            } catch (e) {
+                console.error("[Forex Analysis Error]:", e);
+                // Log the raw text only if it was captured before the error
+                if(rawText) {
+                    console.log("Raw Text Capture (Error State):", rawText);
+                }
+                setUIState(false, `Error: Failed to process analysis. Check the console for debugging information. (${e.message})`);
+            }
+        }
+    </script>
+</body>
+</html>
